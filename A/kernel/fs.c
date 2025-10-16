@@ -282,6 +282,8 @@ iget(uint dev, uint inum)
 struct inode*
 idup(struct inode *ip)
 {
+  if(ip == 0)
+    return 0;
   acquire(&itable.lock);
   ip->ref++;
   release(&itable.lock);

@@ -26,6 +26,9 @@ OBJS = \
   $K/pipe.o \
   $K/exec.o \
   $K/sysfile.o \
+  $K/swap.o \
+  $K/demand.o \
+  $K/dirty.o \
   $K/kernelvec.o \
   $K/plic.o \
   $K/virtio_disk.o
@@ -142,6 +145,8 @@ UPROGS=\
 	$U/_logstress\
 	$U/_forphan\
 	$U/_dorphan\
+	$U/_memtest\
+	$U/_demandtest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

@@ -181,5 +181,23 @@ void            virtio_disk_init(void);
 void            virtio_disk_rw(struct buf *, int);
 void            virtio_disk_intr(void);
 
+// swap.c
+int             swap_init(struct proc*);
+void            swap_cleanup(struct proc*);
+int             swap_slot_is_used(struct proc*, int);
+void            swap_slot_set_used(struct proc*, int);
+void            swap_slot_set_free(struct proc*, int);
+int             swap_alloc_slot(struct proc*);
+int             swap_out_page(struct proc*, uint64, uint64);
+int             swap_in_page(struct proc*, uint64, uint64, int);
+
+// demand.c
+uint64          demand_page_fault(struct proc*, uint64, int, int);
+uint64          demand_page_fault_with_pagetable(struct proc*, pagetable_t, uint64, int, int);
+
+// dirty.c
+int             mark_page_dirty(struct proc*, uint64);
+int             handle_write_fault(struct proc*, uint64);
+
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

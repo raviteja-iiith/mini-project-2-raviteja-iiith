@@ -352,13 +352,19 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0) {
-      if((pa0 = vmfault(pagetable, va0, 0)) == 0) {
+      // Use demand paging handler instead of vmfault
+      struct proc *p = myproc();
+      if(p && demand_page_fault_with_pagetable(p, pagetable, va0, 1, 0)) {
+        pa0 = walkaddr(pagetable, va0);
+      }
+      if(pa0 == 0) {
         return -1;
       }
     }
 
     pte = walk(pagetable, va0, 0);
     // forbid copyout over read-only user text pages.
+    // printf("DEBUG: copyout check pte=0x%lx, PTE_W=%d\n", *pte, (*pte & PTE_W) != 0);
     if((*pte & PTE_W) == 0)
       return -1;
       
@@ -386,7 +392,12 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0) {
-      if((pa0 = vmfault(pagetable, va0, 0)) == 0) {
+      // Use demand paging handler instead of vmfault
+      struct proc *p = myproc();
+      if(p && demand_page_fault(p, va0, 0, 0)) {
+        pa0 = walkaddr(pagetable, va0);
+      }
+      if(pa0 == 0) {
         return -1;
       }
     }

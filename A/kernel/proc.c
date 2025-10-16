@@ -124,6 +124,14 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  
+  // Initialize demand paging fields
+  p->num_resident = 0;
+  p->next_seq = 1;
+  p->num_swapped = 0;
+  p->swap_file = 0;
+  p->exec_inode = 0;
+  p->heap_start = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -161,6 +169,21 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  
+  // Clean up swap file
+  swap_cleanup(p);
+  
+  // Release reference to executable
+  if(p->exec_inode) {
+    iput(p->exec_inode);
+    p->exec_inode = 0;
+  }
+  
+  // Clear demand paging fields
+  p->num_resident = 0;
+  p->num_swapped = 0;
+  p->next_seq = 1;
+  
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -272,6 +295,26 @@ kfork(void)
     return -1;
   }
   np->sz = p->sz;
+  
+  // Copy demand paging fields from parent
+  np->num_resident = 0;  // Child starts with no resident pages
+  np->next_seq = 1;
+  np->num_swapped = 0;
+  np->swap_file = 0;  // Each process gets its own swap file
+  np->heap_start = p->heap_start;
+  
+  // Copy segments from parent to child
+  np->num_segments = p->num_segments;
+  for(i = 0; i < p->num_segments; i++) {
+    np->segments[i] = p->segments[i];
+  }
+  
+  // Duplicate reference to executable inode
+  if(p->exec_inode) {
+    np->exec_inode = idup(p->exec_inode);
+  } else {
+    np->exec_inode = 0;
+  }
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -341,6 +384,9 @@ kexit(int status)
   iput(p->cwd);
   end_op();
   p->cwd = 0;
+
+  // Cleanup swap resources
+  swap_cleanup(p);
 
   acquire(&wait_lock);
 

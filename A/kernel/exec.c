@@ -7,14 +7,14 @@
 #include "defs.h"
 #include "elf.h"
 
-static int loadseg(pde_t *, uint64, struct inode *, uint, uint);
+
 
 // map ELF permissions to PTE permission bits.
 int flags2perm(int flags)
 {
-    int perm = 0;
+    int perm = PTE_R; // Always readable
     if(flags & 0x1)
-      perm = PTE_X;
+      perm |= PTE_X;
     if(flags & 0x2)
       perm |= PTE_W;
     return perm;
@@ -55,7 +55,9 @@ kexec(char *path, char **argv)
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
-  // Load program into memory.
+  // True demand paging - only record segment boundaries, no eager loading
+  int num_segments = 0;
+  
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
       goto bad;
@@ -67,34 +69,85 @@ kexec(char *path, char **argv)
       goto bad;
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
-    uint64 sz1;
-    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz, flags2perm(ph.flags))) == 0)
-      goto bad;
-    sz = sz1;
-    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
-      goto bad;
+      
+    // Store segment info for demand paging (no allocation yet)
+    if(num_segments < MAX_SEGMENTS) {
+      p->segments[num_segments].va_start = ph.vaddr;
+      p->segments[num_segments].va_end = ph.vaddr + ph.memsz;
+      p->segments[num_segments].file_offset = ph.off;
+      p->segments[num_segments].file_size = ph.filesz;
+      p->segments[num_segments].mem_size = ph.memsz;
+      p->segments[num_segments].flags = ph.flags;
+      num_segments++;
+    }
+    
+    // Update sz to cover all segments, but don't allocate
+    if(ph.vaddr + ph.memsz > sz)
+      sz = ph.vaddr + ph.memsz;
   }
+  
+  p->num_segments = num_segments;
+  // Initialize demand paging fields
+  p = myproc();
+  p->num_resident = 0;
+  p->next_seq = 0;
+  p->num_swapped = 0;
+  p->swap_file = 0;
+  p->exec_inode = ip; // Keep reference to executable for loading
+  idup(ip); // Increment reference count
+  p->heap_start = PGROUNDUP(sz);
+  
+  // Log the truly lazy mapping setup
+  uint64 stack_top = TRAPFRAME;
+  uint64 text_start = 0, text_end = 0, data_start = 0, data_end = 0;
+  for(int i = 0; i < p->num_segments; i++) {
+    if(p->segments[i].flags & 0x1) { // Executable
+      if(text_start == 0) {
+        text_start = p->segments[i].va_start;
+        text_end = p->segments[i].va_end;
+      } else {
+        text_end = p->segments[i].va_end;
+      }
+    } else { // Data
+      if(data_start == 0) {
+        data_start = p->segments[i].va_start;
+        data_end = p->segments[i].va_end;
+      } else {
+        data_end = p->segments[i].va_end;
+      }
+    }
+  }
+  printf("[pid %d] INIT-LAZYMAP text=[0x%lx,0x%lx) data=[0x%lx,0x%lx) heap_start=0x%lx stack_top=0x%lx\n",
+          p->pid, text_start, text_end, data_start, data_end, p->heap_start, stack_top);
+  
+  // printf("[pid %d] DEBUG: exec setup complete, starting argument copy\n", p->pid);
+  
   iunlockput(ip);
   end_op();
   ip = 0;
 
-  p = myproc();
   uint64 oldsz = p->sz;
-
-  // Allocate some pages at the next page boundary.
-  // Make the first inaccessible as a stack guard.
-  // Use the rest as the user stack.
+  
+  // Truly lazy - don't allocate any pages, just set size
   sz = PGROUNDUP(sz);
+  uint64 arg_start = sz;
+  
+  // Minimal pre-allocation for arguments (1 page for basic exec to work)
   uint64 sz1;
-  if((sz1 = uvmalloc(pagetable, sz, sz + (USERSTACK+1)*PGSIZE, PTE_W)) == 0)
+  if((sz1 = uvmalloc(pagetable, sz, sz + PGSIZE, PTE_U | PTE_W | PTE_R)) == 0)
     goto bad;
-  sz = sz1;
-  uvmclear(pagetable, sz-(USERSTACK+1)*PGSIZE);
+  sz = arg_start + (USERSTACK+1)*PGSIZE; // Full stack size
+  
+  // Set process size early for demand paging to work during argument copying
+  p->sz = sz;
+  
+  // Set up stack pointers
   sp = sz;
   stackbase = sp - USERSTACK*PGSIZE;
 
   // Copy argument strings into new stack, remember their
   // addresses in ustack[].
+  // printf("[pid %d] DEBUG: starting argv copy, sp=0x%lx, stackbase=0x%lx\n", p->pid, sp, stackbase);
   for(argc = 0; argv[argc]; argc++) {
     if(argc >= MAXARG)
       goto bad;
@@ -102,8 +155,12 @@ kexec(char *path, char **argv)
     sp -= sp % 16; // riscv sp must be 16-byte aligned
     if(sp < stackbase)
       goto bad;
-    if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0)
+    // printf("[pid %d] DEBUG: copying arg %ld to sp=0x%lx\n", p->pid, argc, sp);
+    if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0) {
+      // printf("[pid %d] DEBUG: copyout failed for arg %ld\n", p->pid, argc);
       goto bad;
+    }
+    // printf("[pid %d] DEBUG: arg %ld copied successfully\n", p->pid, argc);
     ustack[argc] = sp;
   }
   ustack[argc] = 0;
@@ -134,6 +191,9 @@ kexec(char *path, char **argv)
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+  
+  // Simple logging for now
+  // printf("[pid %d] DEBUG: EXEC completed successfully\n", p->pid);
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
@@ -147,27 +207,4 @@ kexec(char *path, char **argv)
   return -1;
 }
 
-// Load an ELF program segment into pagetable at virtual address va.
-// va must be page-aligned
-// and the pages from va to va+sz must already be mapped.
-// Returns 0 on success, -1 on failure.
-static int
-loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz)
-{
-  uint i, n;
-  uint64 pa;
 
-  for(i = 0; i < sz; i += PGSIZE){
-    pa = walkaddr(pagetable, va + i);
-    if(pa == 0)
-      panic("loadseg: address should exist");
-    if(sz - i < PGSIZE)
-      n = sz - i;
-    else
-      n = PGSIZE;
-    if(readi(ip, 0, (uint64)pa, offset+i, n) != n)
-      return -1;
-  }
-  
-  return 0;
-}

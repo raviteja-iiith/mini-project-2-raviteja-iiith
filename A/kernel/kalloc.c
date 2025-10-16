@@ -27,7 +27,9 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  // Limit memory to force swapping during tests
+  // Allocate ~300 pages (~1.2MB) - enough for init but forces swapping
+  freerange(end, (void*)PGROUNDUP((uint64)end + 300*PGSIZE));
 }
 
 void

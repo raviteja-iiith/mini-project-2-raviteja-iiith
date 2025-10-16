@@ -68,12 +68,22 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else if((r_scause() == 15 || r_scause() == 13) &&
-            vmfault(p->pagetable, r_stval(), (r_scause() == 13)? 1 : 0) != 0) {
-    // page fault on lazily-allocated page
+  } else if(r_scause() == 15 || r_scause() == 13 || r_scause() == 12) {
+    // Page fault (instruction=12, load=13, store=15)
+    uint64 va = r_stval();
+    int is_write = (r_scause() == 15);  // Store page fault
+    int is_exec = (r_scause() == 12);   // Instruction page fault
+    
+    if(demand_page_fault(p, va, is_write, is_exec) == 0) {
+      // Failed to handle page fault - kill process
+      const char* access = is_exec ? "exec" : (is_write ? "write" : "read");
+      printf("[pid %d] KILL page-fault-failed va=0x%lx access=%s\n", p->pid, va, access);
+      setkilled(p);
+    }
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+    printf("[pid %d] KILL unexpected-trap\n", p->pid);
     setkilled(p);
   }
 

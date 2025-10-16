@@ -81,6 +81,29 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// Resident page info for demand paging
+struct resident_page {
+  uint64 va;         // Virtual address (page-aligned)
+  uint64 pa;         // Physical address
+  int seq;           // FIFO sequence number
+  int is_dirty;      // Dirty bit (1 if written since brought in)
+  int swap_slot;     // Slot in swap file (-1 if not swapped)
+};
+
+// Text/data segment info for lazy loading
+struct segment {
+  uint64 va_start;    // Virtual start address
+  uint64 va_end;      // Virtual end address
+  uint64 file_offset; // Offset in executable file
+  uint64 file_size;   // Size in file
+  uint64 mem_size;    // Size in memory (may be larger than file_size)
+  int flags;          // ELF flags (for permissions)
+};
+
+#define MAX_RESIDENT_PAGES 64
+#define MAX_SWAP_PAGES 256 
+#define MAX_SEGMENTS 4
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -104,4 +127,19 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  
+  // Simplified demand paging fields
+  int num_resident;            // Number of resident pages
+  int next_seq;                // Next FIFO sequence number
+  int num_swapped;             // Number of swapped pages
+  struct file *swap_file;      // Swap file handle
+  struct inode *exec_inode;    // Reference to executable file
+  uint64 heap_start;           // Heap start
+  
+  // ELF segment info for lazy loading
+  struct segment segments[MAX_SEGMENTS];  // Text/data segments
+  int num_segments;            // Number of segments
+  
+  // Swap slot management
+  char swap_slots[MAX_SWAP_PAGES];  // Bitmap of used swap slots
 };
