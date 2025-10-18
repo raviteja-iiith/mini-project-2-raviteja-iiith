@@ -243,7 +243,7 @@ void signal_payment_accepted(int customer_id, int acceptance_end_time) {
     pthread_mutex_unlock(&customer_sync[customer_id % 100000].mutex);
 }
 
-// ==================== PAYMENT QUEUE FUNCTIONS ====================
+//############## LLM Generated Code Begins ##############
 void add_payment_request(int customer_id, int pay_time) {
     pthread_mutex_lock(&payment_queue_mutex);
     payment_queue[payment_count].customer_id = customer_id;
@@ -252,6 +252,7 @@ void add_payment_request(int customer_id, int pay_time) {
     payment_count++;
     pthread_mutex_unlock(&payment_queue_mutex);
 }
+//############## LLM Generated Code Ends ################
 
 bool get_next_payment(int* customer_id, int* pay_time) {
     pthread_mutex_lock(&payment_queue_mutex);

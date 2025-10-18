@@ -1,12 +1,10 @@
 #include "cshark.h"
 #include "parser.h"
 
-// Helper function to get total packet length
 int get_total_packet_length(const struct pcap_pkthdr *header) {
     return header->len;
 }
 
-// Function to display packet statistics
 void display_packet_statistics(void) {
     if (packet_count == 0) {
         printf("No packets captured yet.\n");
@@ -26,7 +24,6 @@ void display_packet_statistics(void) {
     printf("Other Packets: %d\n", other_count);
 }
 
-// Function to export packets to file (bonus feature)
 void export_session_to_file(const char *filename) {
     if (packet_count == 0) {
         printf("No packets to export.\n");

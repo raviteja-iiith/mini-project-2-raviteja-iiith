@@ -1,7 +1,6 @@
 #include "cshark.h"
 #include "parser.h"
 
-// Helper function to extract protocol from stored packet
 const char* get_packet_protocol(const unsigned char *packet, int length) {
     if (length < 14) return "Unknown";
     
@@ -37,7 +36,6 @@ const char* get_packet_protocol(const unsigned char *packet, int length) {
     return "Unknown";
 }
 
-// Helper function to get source and destination info
 void get_packet_addresses(const unsigned char *packet, int length, char *src, char *dst) {
     strcpy(src, "N/A");
     strcpy(dst, "N/A");
@@ -78,15 +76,12 @@ void inspect_last_session(void) {
     
     printf("Total packets captured: %d\n\n", packet_count);
     
-    // Pagination settings
     int packets_per_page = 50;
     int current_page = 0;
     int total_pages = (packet_count + packets_per_page - 1) / packets_per_page;
     char choice[10];
     
     while (1) {
-        // Clear screen for better readability (optional)
-        // system("clear"); // Uncomment if you want screen clearing
         
         printf("\n═══════════════════════════════════════════════════════════════════════════════════════════════════\n");
         printf("Page %d of %d (Showing packets %d-%d of %d total)\n", 
@@ -96,13 +91,11 @@ void inspect_last_session(void) {
                packet_count);
         printf("═══════════════════════════════════════════════════════════════════════════════════════════════════\n\n");
         
-        // Enhanced header with protocol
         printf("%-8s %-22s %-10s %-10s %-40s %-40s\n", 
                "Packet", "Timestamp", "Length", "Protocol", "Source", "Destination");
         printf("%-8s %-22s %-10s %-10s %-40s %-40s\n", 
                "------", "---------", "------", "--------", "------", "-----------");
         
-        // Display current page
         int start = current_page * packets_per_page;
         int end = start + packets_per_page;
         if (end > packet_count) end = packet_count;
@@ -122,7 +115,6 @@ void inspect_last_session(void) {
                    dst);
         }
         
-        // Navigation options
         printf("\n═══════════════════════════════════════════════════════════════════════════════════════════════════\n");
         printf("Commands: [N]ext page | [P]revious page | [A]ll packets | [I]nspect packet | [Q]uit\n");
         printf("Enter command: ");
@@ -150,7 +142,6 @@ void inspect_last_session(void) {
             }
         }
         else if (choice[0] == 'a' || choice[0] == 'A') {
-            // Display all packets at once
             printf("\n═══════════════════════════════════════════════════════════════════════════════════════════════════\n");
             printf("Displaying ALL %d packets:\n", packet_count);
             printf("═══════════════════════════════════════════════════════════════════════════════════════════════════\n\n");
@@ -187,7 +178,6 @@ void inspect_last_session(void) {
             }
             while (getchar() != '\n');
             
-            // Find packet
             int found = -1;
             for (int i = 0; i < packet_count; i++) {
                 if (packet_store[i].id == packet_id) {
@@ -202,7 +192,6 @@ void inspect_last_session(void) {
                 continue;
             }
             
-            // Display detailed inspection
             printf("\n");
             printf("╔═══════════════════════════════════════════════════════════════╗\n");
             printf("║              DETAILED PACKET INSPECTION                      ║\n");
@@ -215,7 +204,6 @@ void inspect_last_session(void) {
             printf("Length: %d bytes\n", packet_store[found].length);
             printf("Protocol: %s\n\n", get_packet_protocol(packet_store[found].data, packet_store[found].length));
             
-            // Parse the packet again with detailed output
             struct pcap_pkthdr header;
             header.ts = packet_store[found].timestamp;
             header.len = packet_store[found].length;
@@ -224,7 +212,6 @@ void inspect_last_session(void) {
             printf("═══════════════════ Layer-by-Layer Analysis ═══════════════════\n\n");
             process_packet(&header, packet_store[found].data);
             
-            // Display full hex dump
             print_hex_dump(packet_store[found].data, packet_store[found].length);
             
             printf("\n[C-Shark] Press Enter to continue...");

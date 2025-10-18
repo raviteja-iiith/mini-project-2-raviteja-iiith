@@ -36,7 +36,7 @@ void parse_ethernet(const unsigned char *packet, int *offset) {
             break;
     }
 }
-
+//############## LLM Generated Code Begins ##############
 void parse_ipv4(const unsigned char *packet, int *offset) {
     struct ip *iph = (struct ip *)(packet + *offset);
     int ip_header_len = iph->ip_hl * 4;
@@ -77,6 +77,7 @@ void parse_ipv4(const unsigned char *packet, int *offset) {
             break;
     }
 }
+//############## LLM Generated Code ends ##############
 
 void parse_ipv6(const unsigned char *packet, int *offset) {
     struct ip6_hdr *ip6h = (struct ip6_hdr *)(packet + *offset);
